@@ -10,10 +10,11 @@ public static class TeamBuilder
 
         foreach (var monster in selectedMonsters)
         {
-            monster.ActiveMoves = monster.AvailableMoves.Take(4).ToList();
-            team.Members.Add(monster);
+            // Uzimamo samo napade za level 1 (obično 2 napada)
+            var startingMoves = monster.AvailableMoves.Where(m => m.RequiredLevel <= 1).Take(2).ToList();
+            monster.ActiveMoves = new List<Attack>(startingMoves);
 
-            // Dodajemo čudovište u inventar odmah pri pravljenju tima
+            team.Members.Add(monster);
             inventory.AddMonster(monster);
         }
 

@@ -52,17 +52,16 @@ public class Monster
     // Metoda koja se poziva kada čudovište dobije XP
     public void AddXP(int amount)
     {
-        if (Level >= GetMaxLevel()) return; // Već je na maksimumu
+        if (Level >= GetMaxLevel()) return;
 
         XP += amount;
 
-        // Provera da li je sakupio dovoljno za sledeći nivo
-        while (XP >= Level * 50 && Level < GetMaxLevel())
+        while (XP >= Level * 30 && Level < GetMaxLevel())
         {
-            XP -= Level * 50;
+            XP -= Level * 30;
             Level++;
 
-            // Rast statistika u zavisnosti od redkosti
+            // Rast statistika
             int hpGain = Rarity switch
             {
                 Rarity.Common => 3,
@@ -83,11 +82,14 @@ public class Monster
 
             MaxHp += hpGain;
             Atk += atkGain;
-            CurrentHp = MaxHp; // Resetujemo HP na novi maksimum
+            CurrentHp = MaxHp; // Reset HP na max
 
-            // Otključavanje novih napada na svakih 5 levela
-            if (Level % 5 == 0)
+            // PROVERA ZA OTKLJUČAVANJE NAPADA (svakih 5 levela, a kasnije svakih 10)
+            bool shouldUnlock = (Level <= 20 && Level % 5 == 0) || (Level > 20 && Level % 10 == 0);
+
+            if (shouldUnlock)
             {
+                // Nalazimo napad koji se otključava na ovom levelu
                 var newMove = AvailableMoves.FirstOrDefault(m => m.RequiredLevel == Level);
                 if (newMove != null)
                 {
@@ -95,8 +97,13 @@ public class Monster
                     if (ActiveMoves.Count < 4 && !ActiveMoves.Contains(newMove))
                     {
                         ActiveMoves.Add(newMove);
+                        Console.WriteLine($"\n✨ {Name} je naučio novi napad: {newMove.Name}!");
                     }
-                    // Ako već imamo 4, za sada ga ne dodajemo automatski (to će kasnije igrač birati)
+                    else
+                    {
+                        // Ako već imamo 4, samo obaveštavamo igrača da je napad dostupan u inventaru
+                        Console.WriteLine($"\n✨ {Name} može da nauči novi napad: {newMove.Name}! (Promeni u inventaru)");
+                    }
                 }
             }
         }

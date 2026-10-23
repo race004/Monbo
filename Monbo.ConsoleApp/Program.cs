@@ -100,6 +100,7 @@ void GameLoop(Team playerTeam, PlayerInventory inventory)
                 break;
             case 4:
                 ManageTeamAndInventory(playerTeam, inventory);
+                AutoSave(playerTeam, inventory);
                 break;
             case 5:
                 SaveGame(playerTeam, inventory);
@@ -129,13 +130,18 @@ Team? BuildNewTeam(PlayerInventory inventory)
     Console.WriteLine("--- Biranje TVOG PRVOG čudovišta ---");
     Console.WriteLine("(Unesi 0 da se vratiš na glavni meni)\n");
 
-    for (int i = 0; i < GameData.MonsterTemplates.Count; i++)
+    // Prikazujemo samo 3 specifična Common čudovišta za početak
+    var starterTemplates = GameData.MonsterTemplates
+        .Where(m => m.Rarity == Rarity.Common && (m.Name == "Flameon" || m.Name == "Aquari" || m.Name == "Leafling"))
+        .ToList();
+
+    for (int i = 0; i < starterTemplates.Count; i++)
     {
-        var m = GameData.MonsterTemplates[i];
+        var m = starterTemplates[i];
         Console.WriteLine($"{i + 1}. {m.Name} ({m.Rarity}) - Tip: {string.Join(", ", m.Types)} - HP: {m.MaxHp}, ATK: {m.Atk}");
     }
 
-    int choice = InputHelper.GetIntInput("Izaberi čudovište: ", 0, GameData.MonsterTemplates.Count);
+    int choice = InputHelper.GetIntInput("Izaberi čudovište: ", 0, starterTemplates.Count);
 
     if (choice == 0)
     {
@@ -149,26 +155,18 @@ Team? BuildNewTeam(PlayerInventory inventory)
     newMonster.AvailableMoves = new List<Attack>(selectedTemplate.AvailableMoves);
 
     Console.WriteLine($"\nIzabrao si {newMonster.Name}. Sada izaberi 4 napada:");
-    while (newMonster.ActiveMoves.Count < 4)
+    // Umesto while (newMonster.ActiveMoves.Count < 4)
+    // Sada automatski dodeljujemo 2 napada
+    var startingMoves = newMonster.AvailableMoves.Where(m => m.RequiredLevel == 1).Take(2).ToList();
+    newMonster.ActiveMoves.AddRange(startingMoves);
+
+    Console.WriteLine($"\n{newMonster.Name} kreće sa 2 napada:");
+    foreach (var move in newMonster.ActiveMoves)
     {
-        Console.WriteLine($"\nDostupni napadi (Izabrano {newMonster.ActiveMoves.Count}/4):");
-        for (int i = 0; i < newMonster.AvailableMoves.Count; i++)
-        {
-            var a = newMonster.AvailableMoves[i];
-            Console.WriteLine($"{i + 1}. {a.Name} ({(a.IsHeal ? "Heal" : a.Type.ToString())})");
-        }
-
-        int moveChoice = InputHelper.GetIntInput("Izaberi napad: ", 1, newMonster.AvailableMoves.Count);
-        var selectedMove = newMonster.AvailableMoves[moveChoice - 1];
-
-        if (newMonster.ActiveMoves.Contains(selectedMove))
-            Console.WriteLine("Već si izabrao taj napad!");
-        else
-        {
-            newMonster.ActiveMoves.Add(selectedMove);
-            Console.WriteLine($"Dodat napad: {selectedMove.Name}");
-        }
+        Console.WriteLine($"- {move.Name}");
     }
+    Console.WriteLine("Pritisni Enter za nastavak...");
+    Console.ReadLine();
 
     // Pravimo tim sa samo jednim članom
     List<Monster> startingMonsters = new() { newMonster };
@@ -188,8 +186,8 @@ void ManageTeamAndInventory(Team team, PlayerInventory inv)
         for (int i = 0; i < team.Members.Count; i++)
         {
             var m = team.Members[i];
-            int xpNeeded = m.Level * 50;
-            Console.WriteLine($"{i + 1}. {m.Name} (Lvl {m.Level}) HP:{m.MaxHp} ATK:{m.Atk} | XP: {m.XP}/{xpNeeded}");
+            int xpNeeded = m.Level * 30; // Ažurirano na 30 jer smo menjali
+            Console.WriteLine($"{i + 1}. {m.Name} [{m.Rarity}] (Lvl {m.Level}) HP:{m.MaxHp} ATK:{m.Atk} | XP: {m.XP}/{xpNeeded}");
         }
 
         // Prikaz SVIH čudovišta iz inventara
@@ -200,12 +198,13 @@ void ManageTeamAndInventory(Team team, PlayerInventory inv)
         {
             var m = sortedMonsters[i];
             bool inTeam = team.Members.Contains(m);
-            int xpNeeded = m.Level * 50;
+            int xpNeeded = m.Level * 30;
             string teamStatus = inTeam ? " [U TIMU]" : "";
-            Console.WriteLine($"{i + 1}. {m.Name} (Lvl {m.Level}) HP:{m.MaxHp} ATK:{m.Atk} | XP: {m.XP}/{xpNeeded}{teamStatus}");
+
+            // DODAT PRIKAZ REDKOSTI
+            Console.WriteLine($"{i + 1}. {m.Name} [{m.Rarity}] (Lvl {m.Level}) HP:{m.MaxHp} ATK:{m.Atk} | XP: {m.XP}/{xpNeeded}{teamStatus}");
         }
 
-        // Novi, pametniji meni
         Console.WriteLine("\n=== OPCIJE ===");
         if (team.Members.Count < 3) Console.WriteLine("1. Dodaj člana u tim");
         if (team.Members.Count > 0) Console.WriteLine("2. Izbaci člana iz tima");
@@ -217,9 +216,9 @@ void ManageTeamAndInventory(Team team, PlayerInventory inv)
 
         if (choice == 0) break;
 
+        // ... (ostatak koda za opcije 1, 2, 3 i 4 ostaje isti) ...
         if (choice == 1 && team.Members.Count < 3)
         {
-            // DODAVANJE
             Console.WriteLine("\nIzaberi KOGA dodaješ u tim (broj iz liste, 0 za nazad):");
             int invIndex = InputHelper.GetIntInput("> ", 0, sortedMonsters.Count);
             if (invIndex == 0) continue;
@@ -233,7 +232,6 @@ void ManageTeamAndInventory(Team team, PlayerInventory inv)
         }
         else if (choice == 2 && team.Members.Count > 0)
         {
-            // IZBACIVANJE
             Console.WriteLine("\nIzaberi KOGA izbacuješ iz tima (0 za nazad):");
             int teamIndex = InputHelper.GetIntInput("> ", 0, team.Members.Count);
             if (teamIndex == 0) continue;
@@ -245,7 +243,6 @@ void ManageTeamAndInventory(Team team, PlayerInventory inv)
         }
         else if (choice == 3 && team.Members.Count == 3)
         {
-            // ZAMENA
             Console.WriteLine("\nIzaberi koga MENJAŠ iz tima (0 za nazad):");
             int teamIndex = InputHelper.GetIntInput("> ", 0, team.Members.Count);
             if (teamIndex == 0) continue;
@@ -262,45 +259,54 @@ void ManageTeamAndInventory(Team team, PlayerInventory inv)
         }
         else if (choice == 4)
         {
-            // MENJANJE NAPADA (ostaje isto)
             Console.WriteLine("\nIzaberi čudovište kome menjaš napade (0 za nazad):");
             int monsterIndexInput = InputHelper.GetIntInput("> ", 0, sortedMonsters.Count);
             if (monsterIndexInput == 0) continue;
 
             var selectedMonster = sortedMonsters[monsterIndexInput - 1];
 
-            Console.WriteLine($"\nTrenutni aktivni napadi za {selectedMonster.Name}:");
+            // Pripremamo listu dostupnih napada (samo oni koje čudovište može da koristi na svom levelu)
+            var availableMoves = selectedMonster.AvailableMoves
+                .Where(m => !selectedMonster.ActiveMoves.Contains(m) && m.RequiredLevel <= selectedMonster.Level)
+                .ToList();
+
+            if (availableMoves.Count == 0)
+            {
+                Console.WriteLine($"\n{selectedMonster.Name} nema drugih dostupnih napada!");
+                Console.ReadLine();
+                continue;
+            }
+
+            // ISPISUJEMO OBE LISTE ISTOVREMENO
+            Console.Clear();
+            Console.WriteLine($"=== MENJANJE NAPADA ZA: {selectedMonster.Name} ===\n");
+
+            Console.WriteLine("--- TRENUTNI AKTIVNI NAPADI ---");
             for (int i = 0; i < selectedMonster.ActiveMoves.Count; i++)
             {
                 var a = selectedMonster.ActiveMoves[i];
-                Console.WriteLine($"{i + 1}. {a.Name} ({(a.IsHeal ? "Heal" : a.Type.ToString())})");
+                string typeStr = a.IsHeal ? "Heal" : a.Type.ToString();
+                string powerStr = a.IsHeal ? $"Heal: {a.HealPercent}%" : $"Snaga: {a.PowerPercent}%";
+                Console.WriteLine($"{i + 1}. {a.Name} ({typeStr}) - {powerStr} | Preciznost: {a.Accuracy}%");
             }
 
-            Console.WriteLine("\nKoji napad želiš da zameniš? (0 za nazad):");
+            Console.WriteLine("\n--- DOSTUPNI NAPADI ZA ZAMENU ---");
+            for (int i = 0; i < availableMoves.Count; i++)
+            {
+                var a = availableMoves[i];
+                string typeStr = a.IsHeal ? "Heal" : a.Type.ToString();
+                string powerStr = a.IsHeal ? $"Heal: {a.HealPercent}%" : $"Snaga: {a.PowerPercent}%";
+                Console.WriteLine($"{i + 1}. {a.Name} ({typeStr}) - {powerStr} | Preciznost: {a.Accuracy}%");
+            }
+
+            Console.WriteLine("\n==================================================");
+            Console.WriteLine("Koji od TVOJIH napada želiš da zameniš? (unesi 1-4, ili 0 za nazad):");
             int moveToReplaceInput = InputHelper.GetIntInput("> ", 0, selectedMonster.ActiveMoves.Count);
             if (moveToReplaceInput == 0) continue;
 
             var moveToReplace = selectedMonster.ActiveMoves[moveToReplaceInput - 1];
 
-            var availableMoves = selectedMonster.AvailableMoves
-                .Where(m => !selectedMonster.ActiveMoves.Contains(m))
-                .ToList();
-
-            if (availableMoves.Count == 0)
-            {
-                Console.WriteLine("Ovo čudovište nema drugih dostupnih napada!");
-                Console.ReadLine();
-                continue;
-            }
-
-            Console.WriteLine($"\nDostupni napadi koje {selectedMonster.Name} može da nauči:");
-            for (int i = 0; i < availableMoves.Count; i++)
-            {
-                var a = availableMoves[i];
-                Console.WriteLine($"{i + 1}. {a.Name} ({(a.IsHeal ? "Heal" : a.Type.ToString())}) - Snaga: {a.PowerPercent}%");
-            }
-
-            Console.WriteLine("\nKoji napad želiš da DODAŠ? (0 za nazad):");
+            Console.WriteLine($"\nKoji napad želiš da DODAŠ umesto {moveToReplace.Name}? (unesi broj iz liste dostupnih, 0 za nazad):");
             int newMoveInput = InputHelper.GetIntInput("> ", 0, availableMoves.Count);
             if (newMoveInput == 0) continue;
 
@@ -353,11 +359,52 @@ void StartBattle1v1(Team team, PlayerInventory inv)
 
 Monster CreateRandomEnemy(int level)
 {
-    var template = GameData.MonsterTemplates[new Random().Next(GameData.MonsterTemplates.Count)];
+    // Određujemo redkost na osnovu šanse
+    int roll = new Random().Next(1, 101);
+    Rarity targetRarity;
+    if (roll <= 60) targetRarity = Rarity.Common;
+    else if (roll <= 85) targetRarity = Rarity.Uncommon;
+    else if (roll <= 97) targetRarity = Rarity.Rare;
+    else targetRarity = Rarity.Epic;
+
+    // Nalazimo sva čudovišta te redkosti
+    var possibleTemplates = GameData.MonsterTemplates.Where(m => m.Rarity == targetRarity).ToList();
+
+    // Ako iz nekog razloga nema te redkosti (npr. Epic), uzimamo bilo koje
+    if (possibleTemplates.Count == 0)
+        possibleTemplates = GameData.MonsterTemplates;
+
+    var template = possibleTemplates[new Random().Next(possibleTemplates.Count)];
+
     var enemy = new Monster(template.Name, new List<MonsterType>(template.Types), template.Rarity, template.MaxHp, template.Atk);
     enemy.AvailableMoves = new List<Attack>(template.AvailableMoves);
     enemy.ActiveMoves = enemy.AvailableMoves.Take(4).ToList();
     enemy.Level = level;
+
+    // Ažuriranje statistika za level
+    for (int i = 1; i < level; i++)
+    {
+        int hpGain = enemy.Rarity switch
+        {
+            Rarity.Common => 3,
+            Rarity.Uncommon => 5,
+            Rarity.Rare => 7,
+            Rarity.Epic => 9,
+            _ => 3
+        };
+        int atkGain = enemy.Rarity switch
+        {
+            Rarity.Common => 1,
+            Rarity.Uncommon => 2,
+            Rarity.Rare => 3,
+            Rarity.Epic => 4,
+            _ => 1
+        };
+        enemy.MaxHp += hpGain;
+        enemy.Atk += atkGain;
+    }
+
+    enemy.CurrentHp = enemy.MaxHp;
     return enemy;
 }
 

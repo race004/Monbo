@@ -42,8 +42,16 @@ public static class BattleEngine
             Console.WriteLine("\n==================================================");
 
             var playerMove = GetPlayerMove(playerMonster);
+
+            if (playerMove == null)
+            {
+                Console.Clear();
+                TypeWrite("Pobegli ste iz borbe!");
+                return false; // Vraćamo false jer nije pobeda
+            }
+
             Console.Clear();
-            ExecuteAttack(playerMonster, new List<Monster> { playerMonster }, new List<Monster> { enemyMonster }, playerMove, true);
+            ExecuteAttack(playerMonster, new List<Monster> { playerMonster }, new List<Monster> { enemyMonster }, playerMove, true); 
             WaitAndClear();
 
             if (!enemyMonster.IsAlive) break;
@@ -122,6 +130,13 @@ public static class BattleEngine
                 Console.WriteLine($"\nNa potezu je: {attacker.Name}");
                 var move = GetPlayerMove(attacker);
 
+                if (move == null)
+                {
+                    Console.Clear();
+                    TypeWrite("Pobegli ste iz borbe!");
+                    return false;
+                }
+
                 // Ako je heal, pitamo koga leči (ako je Ally ili SelfAndAlly)
                 if (move.IsHeal && (move.HealTarget == HealTarget.Ally || move.HealTarget == HealTarget.SelfAndAlly))
                 {
@@ -166,14 +181,23 @@ public static class BattleEngine
         if (playerWon)
         {
             TypeWrite($"\n🏆 {playerTeam.Name} pobeđuje!");
-            int avgEnemyLevel = (int)enemyTeam.Members.Average(m => m.Level);
-            int xpReward = avgEnemyLevel * 20;
+
+            // 1. Računamo UKUPAN XP (zbir svih levela protivnika * 20)
+            int totalEnemyLevels = enemyTeam.Members.Sum(m => m.Level);
+            int totalXpPool = totalEnemyLevels * 20;
+
+            // 2. Delimo XP sa ukupnim brojem članova tvog tima (npr. ako imaš 3, deli se na 3)
+            int xpPerMonster = totalXpPool / playerTeam.Members.Count;
+
+            TypeWrite($"\nUkupno osvojeno XP: {totalXpPool} (podeljeno na {playerTeam.Members.Count} člana tima = {xpPerMonster} XP po članu)");
+
+            // 3. Dodeljujemo XP samo PREŽIVELIMA
             var survivors = playerTeam.Members.Where(m => m.IsAlive).ToList();
             foreach (var survivor in survivors)
             {
                 int oldLevel = survivor.Level;
-                survivor.AddXP(xpReward);
-                TypeWrite($"{survivor.Name} dobija {xpReward} XP!");
+                survivor.AddXP(xpPerMonster);
+                TypeWrite($"{survivor.Name} dobija {xpPerMonster} XP!");
                 if (survivor.Level > oldLevel)
                 {
                     TypeWrite($"✨ {survivor.Name} je dostigao nivo {survivor.Level}!");
@@ -233,6 +257,13 @@ public static class BattleEngine
                 Console.WriteLine($"\nNa potezu je: {attacker.Name}");
                 var move = GetPlayerMove(attacker);
 
+                if (move == null)
+                {
+                    Console.Clear();
+                    TypeWrite("Pobegli ste iz borbe!");
+                    return false;
+                }
+
                 if (!move.IsHeal)
                 {
                     // U 3v1, protivnik je samo jedan, pa nema potrebe birati metu (uvek je on)
@@ -270,19 +301,29 @@ public static class BattleEngine
         if (playerWon)
         {
             TypeWrite($"\n🏆 {playerTeam.Name} pobeđuje!");
-            int xpReward = enemyMonster.Level * 20;
+
+            // 1. Računamo UKUPAN XP (level protivnika * 20)
+            int totalXpPool = enemyMonster.Level * 20;
+
+            // 2. Delimo XP sa ukupnim brojem članova tvog tima
+            int xpPerMonster = totalXpPool / playerTeam.Members.Count;
+
+            TypeWrite($"\nUkupno osvojeno XP: {totalXpPool} (podeljeno na {playerTeam.Members.Count} člana tima = {xpPerMonster} XP po članu)");
+
+            // 3. Dodeljujemo XP samo PREŽIVELIMA
             var survivors = playerTeam.Members.Where(m => m.IsAlive).ToList();
             foreach (var survivor in survivors)
             {
                 int oldLevel = survivor.Level;
-                survivor.AddXP(xpReward);
-                TypeWrite($"{survivor.Name} dobija {xpReward} XP!");
+                survivor.AddXP(xpPerMonster);
+                TypeWrite($"{survivor.Name} dobija {xpPerMonster} XP!");
                 if (survivor.Level > oldLevel)
                 {
                     TypeWrite($"✨ {survivor.Name} je dostigao nivo {survivor.Level}!");
                 }
             }
 
+            // 4. Hvatanje protivnika
             TypeWrite($"\n✨ UHVAĆENO: {enemyMonster.Name} se pridružuje tvom inventaru!");
             inventory.AddMonster(enemyMonster, isCaught: true);
 
@@ -359,9 +400,9 @@ public static class BattleEngine
         Console.WriteLine();
     }
 
-    private static Attack GetPlayerMove(Monster playerMonster)
+    private static Attack? GetPlayerMove(Monster playerMonster)
     {
-        Console.WriteLine($"\nIzaberi napad za {playerMonster.Name}:");
+        Console.WriteLine($"\nIzaberi napad za {playerMonster.Name} (unesi 0 za bekstvo):");
         for (int i = 0; i < playerMonster.ActiveMoves.Count; i++)
         {
             var move = playerMonster.ActiveMoves[i];
@@ -387,8 +428,12 @@ public static class BattleEngine
         while (true)
         {
             Console.Write("> ");
-            if (int.TryParse(Console.ReadLine(), out choice) && choice >= 1 && choice <= playerMonster.ActiveMoves.Count)
-                return playerMonster.ActiveMoves[choice - 1];
+            if (int.TryParse(Console.ReadLine(), out choice))
+            {
+                if (choice == 0) return null; // Vraćamo null ako igrač želi da pobegne
+                if (choice >= 1 && choice <= playerMonster.ActiveMoves.Count)
+                    return playerMonster.ActiveMoves[choice - 1];
+            }
             Console.WriteLine("Neispravan unos.");
         }
     }

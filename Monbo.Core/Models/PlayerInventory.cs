@@ -12,7 +12,10 @@ public class PlayerInventory
             // Ako je uhvaćeno, resetujemo ga na level 1
             monster.Level = 1;
             monster.XP = 0;
-            monster.ActiveMoves = monster.AvailableMoves.Take(4).ToList();
+
+            // Uzimamo samo napade koji su dostupni na levelu 1 (obično 2 napada)
+            var startingMoves = monster.AvailableMoves.Where(m => m.RequiredLevel <= 1).Take(2).ToList();
+            monster.ActiveMoves = new List<Attack>(startingMoves);
         }
 
         monster.CurrentHp = monster.MaxHp;
