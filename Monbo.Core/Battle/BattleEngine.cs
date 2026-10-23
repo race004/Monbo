@@ -182,14 +182,15 @@ public static class BattleEngine
         {
             TypeWrite($"\n🏆 {playerTeam.Name} pobeđuje!");
 
-            // 1. Računamo UKUPAN XP (zbir svih levela protivnika * 20)
+            // 1. Računamo UKUPAN XP (Zbir svih levela protivnika * 20)
             int totalEnemyLevels = enemyTeam.Members.Sum(m => m.Level);
             int totalXpPool = totalEnemyLevels * 20;
 
-            // 2. Delimo XP sa ukupnim brojem članova tvog tima (npr. ako imaš 3, deli se na 3)
+            // 2. Delimo XP sa ukupnim brojem članova tvog tima
             int xpPerMonster = totalXpPool / playerTeam.Members.Count;
 
-            TypeWrite($"\nUkupno osvojeno XP: {totalXpPool} (podeljeno na {playerTeam.Members.Count} člana tima = {xpPerMonster} XP po članu)");
+            // Ispisujemo samo ukupno osvojeni XP (bez objašnjenja podele)
+            TypeWrite($"\nUkupno osvojeno XP: {totalXpPool}");
 
             // 3. Dodeljujemo XP samo PREŽIVELIMA
             var survivors = playerTeam.Members.Where(m => m.IsAlive).ToList();
@@ -198,6 +199,7 @@ public static class BattleEngine
                 int oldLevel = survivor.Level;
                 survivor.AddXP(xpPerMonster);
                 TypeWrite($"{survivor.Name} dobija {xpPerMonster} XP!");
+
                 if (survivor.Level > oldLevel)
                 {
                     TypeWrite($"✨ {survivor.Name} je dostigao nivo {survivor.Level}!");
@@ -302,13 +304,14 @@ public static class BattleEngine
         {
             TypeWrite($"\n🏆 {playerTeam.Name} pobeđuje!");
 
-            // 1. Računamo UKUPAN XP (level protivnika * 20)
+            // 1. Računamo UKUPAN XP (Level protivnika * 20)
             int totalXpPool = enemyMonster.Level * 20;
 
             // 2. Delimo XP sa ukupnim brojem članova tvog tima
             int xpPerMonster = totalXpPool / playerTeam.Members.Count;
 
-            TypeWrite($"\nUkupno osvojeno XP: {totalXpPool} (podeljeno na {playerTeam.Members.Count} člana tima = {xpPerMonster} XP po članu)");
+            // Ispisujemo samo ukupno osvojeni XP
+            TypeWrite($"\nUkupno osvojeno XP: {totalXpPool}");
 
             // 3. Dodeljujemo XP samo PREŽIVELIMA
             var survivors = playerTeam.Members.Where(m => m.IsAlive).ToList();
@@ -317,6 +320,7 @@ public static class BattleEngine
                 int oldLevel = survivor.Level;
                 survivor.AddXP(xpPerMonster);
                 TypeWrite($"{survivor.Name} dobija {xpPerMonster} XP!");
+
                 if (survivor.Level > oldLevel)
                 {
                     TypeWrite($"✨ {survivor.Name} je dostigao nivo {survivor.Level}!");
@@ -376,7 +380,7 @@ public static class BattleEngine
         string typesStr = string.Join("/", m.Types);
 
         // DODAT XP U ISPIS
-        int xpNeeded = m.Level * 50;
+        int xpNeeded = m.Level * 30;
         Console.WriteLine($"{prefixText}{m.Name} ({typesStr}) (Lvl {m.Level}) | XP: {m.XP}/{xpNeeded}");
         Console.WriteLine($"  HP: {m.CurrentHp}/{m.MaxHp} | ATK: {m.Atk}");
 

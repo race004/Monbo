@@ -4,22 +4,22 @@ namespace Monbo.Core.Data;
 
 public static class TypeChart
 {
-    // Vraća množač štete (2.0, 0.5 ili 1.0)
+    // Vraća ukupan množač štete za napad na čudovište (množi sve tipove)
     public static double GetMultiplier(MonsterType attackType, List<MonsterType> defenderTypes)
     {
-        double multiplier = 1.0;
+        double totalMultiplier = 1.0;
 
+        // Prolazimo kroz SVE tipove branioca i množimo ih
         foreach (var defType in defenderTypes)
         {
-            multiplier *= GetSingleMultiplier(attackType, defType);
+            totalMultiplier *= GetSingleMultiplier(attackType, defType);
         }
 
-        return multiplier;
+        return totalMultiplier;
     }
 
     private static double GetSingleMultiplier(MonsterType attackType, MonsterType defenderType)
     {
-        // Ovde prevodimo našu tabelu iz definicije u kod
         return (attackType, defenderType) switch
         {
             // Fire

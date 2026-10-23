@@ -82,30 +82,49 @@ public class Monster
 
             MaxHp += hpGain;
             Atk += atkGain;
-            CurrentHp = MaxHp; // Reset HP na max
+            CurrentHp = MaxHp;
 
-            // PROVERA ZA OTKLJUČAVANJE NAPADA (svakih 5 levela, a kasnije svakih 10)
-            bool shouldUnlock = (Level <= 20 && Level % 5 == 0) || (Level > 20 && Level % 10 == 0);
+            // PROVERA ZA OTKLJUČAVANJE NAPADA
+            // Na levelu 5, 10, 15, 20, 30, 40, 50 otključavamo novi napad.
+            bool isUnlockLevel = Level == 5 || Level == 10 || Level == 15 || Level == 20 || Level == 30 || Level == 40 || Level == 50;
 
-            if (shouldUnlock)
+            if (isUnlockLevel)
             {
-                // Nalazimo napad koji se otključava na ovom levelu
                 var newMove = AvailableMoves.FirstOrDefault(m => m.RequiredLevel == Level);
                 if (newMove != null)
                 {
-                    // Ako imamo manje od 4 aktivna napada, dodajemo ga odmah
-                    if (ActiveMoves.Count < 4 && !ActiveMoves.Contains(newMove))
+                    // Broj dozvoljenih aktivnih napada zavisi od levela
+                    int maxActiveMoves = Level >= 10 ? 4 : (Level >= 5 ? 3 : 2);
+
+                    if (ActiveMoves.Count < maxActiveMoves)
                     {
                         ActiveMoves.Add(newMove);
                         Console.WriteLine($"\n✨ {Name} je naučio novi napad: {newMove.Name}!");
                     }
                     else
                     {
-                        // Ako već imamo 4, samo obaveštavamo igrača da je napad dostupan u inventaru
                         Console.WriteLine($"\n✨ {Name} može da nauči novi napad: {newMove.Name}! (Promeni u inventaru)");
                     }
                 }
             }
+
+            // Automatski popuni prazne slotove ako ih ima
+            int currentMaxSlots = Level >= 10 ? 4 : (Level >= 5 ? 3 : 2);
+            while (ActiveMoves.Count < currentMaxSlots)
+            {
+                // Uzimamo sledeći napad koji čudovište ispunjava uslove da nauči, a nije već aktivno
+                var nextMove = AvailableMoves.FirstOrDefault(m => !ActiveMoves.Contains(m) && m.RequiredLevel <= Level);
+                if (nextMove != null)
+                {
+                    ActiveMoves.Add(nextMove);
+                    Console.WriteLine($"\n✨ {Name} je automatski naučio napad: {nextMove.Name}!");
+                }
+                else
+                {
+                    break; // Nema više dostupnih napada
+                }
+            }
+
         }
     }
 }

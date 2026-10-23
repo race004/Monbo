@@ -265,21 +265,30 @@ void ManageTeamAndInventory(Team team, PlayerInventory inv)
 
             var selectedMonster = sortedMonsters[monsterIndexInput - 1];
 
-            // Pripremamo listu dostupnih napada (samo oni koje čudovište može da koristi na svom levelu)
+            // Određujemo koliko aktivnih napada čudovište sme da ima na svom levelu
+            int maxSlots = selectedMonster.Level >= 10 ? 4 : (selectedMonster.Level >= 5 ? 3 : 2);
+
+            // Računamo koliko UKUPNO napada čudovište sme da ima u svojoj listi na trenutnom levelu
+            int maxAvailableMoves;
+            if (selectedMonster.Level < 5) maxAvailableMoves = 2;
+            else if (selectedMonster.Level < 10) maxAvailableMoves = 3;
+            else if (selectedMonster.Level < 15) maxAvailableMoves = 4;
+            else if (selectedMonster.Level < 20) maxAvailableMoves = 5;
+            else if (selectedMonster.Level < 30) maxAvailableMoves = 6;
+            else if (selectedMonster.Level < 40) maxAvailableMoves = 7;
+            else if (selectedMonster.Level < 50) maxAvailableMoves = 8;
+            else maxAvailableMoves = 9;
+
+            // Uzimamo samo prvih X napada iz šablona (na osnovu levela)
             var availableMoves = selectedMonster.AvailableMoves
-                .Where(m => !selectedMonster.ActiveMoves.Contains(m) && m.RequiredLevel <= selectedMonster.Level)
+                .Take(maxAvailableMoves)
+                .Where(m => !selectedMonster.ActiveMoves.Contains(m))
                 .ToList();
 
-            if (availableMoves.Count == 0)
-            {
-                Console.WriteLine($"\n{selectedMonster.Name} nema drugih dostupnih napada!");
-                Console.ReadLine();
-                continue;
-            }
-
-            // ISPISUJEMO OBE LISTE ISTOVREMENO
+            // Prikazujemo trenutne napade
             Console.Clear();
-            Console.WriteLine($"=== MENJANJE NAPADA ZA: {selectedMonster.Name} ===\n");
+            Console.WriteLine($"=== MENJANJE NAPADA ZA: {selectedMonster.Name} (Lvl {selectedMonster.Level}) ===");
+            Console.WriteLine($"(Maksimalno slotova na ovom levelu: {maxSlots})\n");
 
             Console.WriteLine("--- TRENUTNI AKTIVNI NAPADI ---");
             for (int i = 0; i < selectedMonster.ActiveMoves.Count; i++)
@@ -290,31 +299,56 @@ void ManageTeamAndInventory(Team team, PlayerInventory inv)
                 Console.WriteLine($"{i + 1}. {a.Name} ({typeStr}) - {powerStr} | Preciznost: {a.Accuracy}%");
             }
 
-            Console.WriteLine("\n--- DOSTUPNI NAPADI ZA ZAMENU ---");
-            for (int i = 0; i < availableMoves.Count; i++)
+            if (availableMoves.Count > 0)
             {
-                var a = availableMoves[i];
-                string typeStr = a.IsHeal ? "Heal" : a.Type.ToString();
-                string powerStr = a.IsHeal ? $"Heal: {a.HealPercent}%" : $"Snaga: {a.PowerPercent}%";
-                Console.WriteLine($"{i + 1}. {a.Name} ({typeStr}) - {powerStr} | Preciznost: {a.Accuracy}%");
+                Console.WriteLine("\n--- DOSTUPNI NAPADI ZA ZAMENU ---");
+                for (int i = 0; i < availableMoves.Count; i++)
+                {
+                    var a = availableMoves[i];
+                    string typeStr = a.IsHeal ? "Heal" : a.Type.ToString();
+                    string powerStr = a.IsHeal ? $"Heal: {a.HealPercent}%" : $"Snaga: {a.PowerPercent}%";
+                    Console.WriteLine($"{i + 1}. {a.Name} ({typeStr}) - {powerStr} | Preciznost: {a.Accuracy}%");
+                }
+            }
+            else
+            {
+                Console.WriteLine("\n(Nema drugih dostupnih napada za ovaj level)");
             }
 
             Console.WriteLine("\n==================================================");
-            Console.WriteLine("Koji od TVOJIH napada želiš da zameniš? (unesi 1-4, ili 0 za nazad):");
-            int moveToReplaceInput = InputHelper.GetIntInput("> ", 0, selectedMonster.ActiveMoves.Count);
-            if (moveToReplaceInput == 0) continue;
 
-            var moveToReplace = selectedMonster.ActiveMoves[moveToReplaceInput - 1];
+            // PROVERA: Da li ima mesta za novi napad bez zamene?
+            if (selectedMonster.ActiveMoves.Count < maxSlots)
+            {
+                Console.WriteLine($"\nImaš slobodan slot ({selectedMonster.ActiveMoves.Count}/{maxSlots}).");
+                Console.WriteLine("Koji napad želiš da DODAŠ? (unesi broj iz liste dostupnih, 0 za nazad):");
+                int newMoveInput = InputHelper.GetIntInput("> ", 0, availableMoves.Count);
+                if (newMoveInput == 0) continue;
 
-            Console.WriteLine($"\nKoji napad želiš da DODAŠ umesto {moveToReplace.Name}? (unesi broj iz liste dostupnih, 0 za nazad):");
-            int newMoveInput = InputHelper.GetIntInput("> ", 0, availableMoves.Count);
-            if (newMoveInput == 0) continue;
+                var newMove = availableMoves[newMoveInput - 1];
+                selectedMonster.ActiveMoves.Add(newMove);
+                Console.WriteLine($"\nUspešno! {selectedMonster.Name} je naučio novi napad: {newMove.Name}.");
+                Console.ReadLine();
+            }
+            else
+            {
+                // Ako je tim pun, tražimo zamenu
+                Console.WriteLine("Koji od TVOJIH napada želiš da zameniš? (unesi 1-4, ili 0 za nazad):");
+                int moveToReplaceInput = InputHelper.GetIntInput("> ", 0, selectedMonster.ActiveMoves.Count);
+                if (moveToReplaceInput == 0) continue;
 
-            var newMove = availableMoves[newMoveInput - 1];
+                var moveToReplace = selectedMonster.ActiveMoves[moveToReplaceInput - 1];
 
-            selectedMonster.ActiveMoves[moveToReplaceInput - 1] = newMove;
-            Console.WriteLine($"\nUspešno! {selectedMonster.Name} je zamenio napad {moveToReplace.Name} sa {newMove.Name}.");
-            Console.ReadLine();
+                Console.WriteLine($"\nKoji napad želiš da DODAŠ umesto {moveToReplace.Name}? (unesi broj iz liste dostupnih, 0 za nazad):");
+                int newMoveInput = InputHelper.GetIntInput("> ", 0, availableMoves.Count);
+                if (newMoveInput == 0) continue;
+
+                var newMove = availableMoves[newMoveInput - 1];
+
+                selectedMonster.ActiveMoves[moveToReplaceInput - 1] = newMove;
+                Console.WriteLine($"\nUspešno! {selectedMonster.Name} je zamenio napad {moveToReplace.Name} sa {newMove.Name}.");
+                Console.ReadLine();
+            }
         }
     }
 }
@@ -323,11 +357,18 @@ void StartBattleTeamVsTeam(Team team)
 {
     int avgLevel = (int)team.Members.Average(m => m.Level);
     var enemyTeam = new Team("Protivnik");
+
     for (int i = 0; i < 3; i++)
     {
-        int lvl = Math.Max(1, avgLevel + new Random().Next(-2, 3));
+        // Random.Next(0, 5) daje brojeve od 0 do 4.
+        // To znači da protivnik može biti na istom nivou (avgLevel + 0)
+        // ili do 4 nivoa viši (avgLevel + 4).
+        int lvlBonus = new Random().Next(0, 5);
+        int lvl = Math.Max(1, avgLevel + lvlBonus);
+
         enemyTeam.Members.Add(CreateRandomEnemy(lvl));
     }
+
     BattleEngine.BattleTeamVsTeam(team, enemyTeam);
 }
 
@@ -342,13 +383,19 @@ void StartBattleTeamVs1(Team team, PlayerInventory inv)
 void StartBattle1v1(Team team, PlayerInventory inv)
 {
     Console.Clear();
-    Console.WriteLine("Izaberi svoje čudovište za 1v1 borbu:");
+    Console.WriteLine("Izaberi svoje čudovište za 1v1 borbu (0 za nazad):");
     for (int i = 0; i < team.Members.Count; i++)
     {
         Console.WriteLine($"{i + 1}. {team.Members[i].Name} (Lvl {team.Members[i].Level})");
     }
-    int choice = InputHelper.GetIntInput("> ", 1, team.Members.Count) - 1;
-    var myFighter = team.Members[choice];
+
+    // Dozvoljavamo unos 0 za povratak
+    int choice = InputHelper.GetIntInput("> ", 0, team.Members.Count);
+
+    // Ako je igrač uneo 0, prekidamo metodu i vraćamo se u glavni meni
+    if (choice == 0) return;
+
+    var myFighter = team.Members[choice - 1];
 
     int avgLevel = (int)team.Members.Average(m => m.Level);
     int lvl = Math.Max(1, avgLevel + new Random().Next(-2, 3));
