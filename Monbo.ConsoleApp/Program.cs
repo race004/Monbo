@@ -77,24 +77,48 @@ void GameLoop(Team playerTeam, PlayerInventory inventory)
 
         switch (choice)
         {
-            case 1:
+            case 1: // Tim vs Tim
                 if (CheckTeamReady(playerTeam))
                 {
-                    StartBattleTeamVsTeam(playerTeam);
+                    int avgLevel = (int)playerTeam.Members.Average(m => m.Level);
+                    var enemyTeam = new Team("Protivnik");
+                    for (int i = 0; i < 3; i++)
+                    {
+                        int lvl = Math.Max(1, avgLevel + new Random().Next(0, 5));
+                        enemyTeam.Members.Add(CreateRandomEnemy(lvl));
+                    }
+                    BattleEngine.BattleTeam(playerTeam, enemyTeam, inventory, false);
                     AutoSave(playerTeam, inventory);
                 }
                 break;
-            case 2:
+            case 2: // Tim vs 1
                 if (CheckTeamReady(playerTeam))
                 {
-                    StartBattleTeamVs1(playerTeam, inventory);
+                    int avgLevel = (int)playerTeam.Members.Average(m => m.Level);
+                    int lvl = Math.Max(1, avgLevel + 5);
+                    var singleEnemy = new Team("Protivnik");
+                    singleEnemy.Members.Add(CreateRandomEnemy(lvl));
+                    BattleEngine.BattleTeam(playerTeam, singleEnemy, inventory, true);
                     AutoSave(playerTeam, inventory);
                 }
                 break;
-            case 3:
+            case 3: // 1 vs 1
                 if (CheckTeamReady(playerTeam))
                 {
-                    StartBattle1v1(playerTeam, inventory);
+                    Console.Clear();
+                    Console.WriteLine("Izaberi svoje čudovište za 1v1 borbu (0 za nazad):");
+                    for (int i = 0; i < playerTeam.Members.Count; i++)
+                        Console.WriteLine($"{i + 1}. {playerTeam.Members[i].Name} (Lvl {playerTeam.Members[i].Level})");
+
+                    int pick = InputHelper.GetIntInput("> ", 0, playerTeam.Members.Count);
+                    if (pick == 0) break;
+
+                    var myFighter = playerTeam.Members[pick - 1];
+                    int avgLevel = (int)playerTeam.Members.Average(m => m.Level);
+                    int lvl = Math.Max(1, avgLevel + new Random().Next(-2, 3));
+                    var enemy = CreateRandomEnemy(lvl);
+
+                    BattleEngine.Battle1v1(myFighter, enemy, inventory);
                     AutoSave(playerTeam, inventory);
                 }
                 break;
@@ -151,7 +175,7 @@ Team? BuildNewTeam(PlayerInventory inventory)
     }
 
     var selectedTemplate = GameData.MonsterTemplates[choice - 1];
-    var newMonster = new Monster(selectedTemplate.Name, new List<MonsterType>(selectedTemplate.Types), selectedTemplate.Rarity, selectedTemplate.MaxHp, selectedTemplate.Atk);
+    var newMonster = new Monster(selectedTemplate.Name, new List<MonsterType>(selectedTemplate.Types), selectedTemplate.Rarity, selectedTemplate.MaxHp, selectedTemplate.Atk, selectedTemplate.Speed, selectedTemplate.MaxStamina);
     newMonster.AvailableMoves = new List<Attack>(selectedTemplate.AvailableMoves);
 
     Console.WriteLine($"\nIzabrao si {newMonster.Name}. Sada izaberi 4 napada:");
@@ -353,60 +377,8 @@ void ManageTeamAndInventory(Team team, PlayerInventory inv)
     }
 }
 
-void StartBattleTeamVsTeam(Team team)
-{
-    int avgLevel = (int)team.Members.Average(m => m.Level);
-    var enemyTeam = new Team("Protivnik");
-
-    for (int i = 0; i < 3; i++)
-    {
-        // Random.Next(0, 5) daje brojeve od 0 do 4.
-        // To znači da protivnik može biti na istom nivou (avgLevel + 0)
-        // ili do 4 nivoa viši (avgLevel + 4).
-        int lvlBonus = new Random().Next(0, 5);
-        int lvl = Math.Max(1, avgLevel + lvlBonus);
-
-        enemyTeam.Members.Add(CreateRandomEnemy(lvl));
-    }
-
-    BattleEngine.BattleTeamVsTeam(team, enemyTeam);
-}
-
-void StartBattleTeamVs1(Team team, PlayerInventory inv)
-{
-    int avgLevel = (int)team.Members.Average(m => m.Level);
-    int lvl = Math.Max(1, avgLevel + 5);
-    var enemy = CreateRandomEnemy(lvl);
-    BattleEngine.BattleTeamVs1(team, enemy, inv);
-}
-
-void StartBattle1v1(Team team, PlayerInventory inv)
-{
-    Console.Clear();
-    Console.WriteLine("Izaberi svoje čudovište za 1v1 borbu (0 za nazad):");
-    for (int i = 0; i < team.Members.Count; i++)
-    {
-        Console.WriteLine($"{i + 1}. {team.Members[i].Name} (Lvl {team.Members[i].Level})");
-    }
-
-    // Dozvoljavamo unos 0 za povratak
-    int choice = InputHelper.GetIntInput("> ", 0, team.Members.Count);
-
-    // Ako je igrač uneo 0, prekidamo metodu i vraćamo se u glavni meni
-    if (choice == 0) return;
-
-    var myFighter = team.Members[choice - 1];
-
-    int avgLevel = (int)team.Members.Average(m => m.Level);
-    int lvl = Math.Max(1, avgLevel + new Random().Next(-2, 3));
-    var enemy = CreateRandomEnemy(lvl);
-
-    BattleEngine.Battle1v1(myFighter, enemy, inv);
-}
-
 Monster CreateRandomEnemy(int level)
 {
-    // Određujemo redkost na osnovu šanse
     int roll = new Random().Next(1, 101);
     Rarity targetRarity;
     if (roll <= 60) targetRarity = Rarity.Common;
@@ -414,44 +386,31 @@ Monster CreateRandomEnemy(int level)
     else if (roll <= 97) targetRarity = Rarity.Rare;
     else targetRarity = Rarity.Epic;
 
-    // Nalazimo sva čudovišta te redkosti
     var possibleTemplates = GameData.MonsterTemplates.Where(m => m.Rarity == targetRarity).ToList();
-
-    // Ako iz nekog razloga nema te redkosti (npr. Epic), uzimamo bilo koje
-    if (possibleTemplates.Count == 0)
-        possibleTemplates = GameData.MonsterTemplates;
+    if (possibleTemplates.Count == 0) possibleTemplates = GameData.MonsterTemplates;
 
     var template = possibleTemplates[new Random().Next(possibleTemplates.Count)];
 
-    var enemy = new Monster(template.Name, new List<MonsterType>(template.Types), template.Rarity, template.MaxHp, template.Atk);
+    // Prosleđujemo Speed i Staminu iz šablona
+    var enemy = new Monster(template.Name, new List<MonsterType>(template.Types), template.Rarity, template.MaxHp, template.Atk, template.Speed, template.MaxStamina);
     enemy.AvailableMoves = new List<Attack>(template.AvailableMoves);
     enemy.ActiveMoves = enemy.AvailableMoves.Take(4).ToList();
     enemy.Level = level;
 
-    // Ažuriranje statistika za level
+    // Ažuriranje statistika za level (dodata brzina)
     for (int i = 1; i < level; i++)
     {
-        int hpGain = enemy.Rarity switch
-        {
-            Rarity.Common => 3,
-            Rarity.Uncommon => 5,
-            Rarity.Rare => 7,
-            Rarity.Epic => 9,
-            _ => 3
-        };
-        int atkGain = enemy.Rarity switch
-        {
-            Rarity.Common => 1,
-            Rarity.Uncommon => 2,
-            Rarity.Rare => 3,
-            Rarity.Epic => 4,
-            _ => 1
-        };
+        int hpGain = enemy.Rarity switch { Rarity.Common => 3, Rarity.Uncommon => 5, Rarity.Rare => 7, Rarity.Epic => 9, _ => 3 };
+        int atkGain = enemy.Rarity switch { Rarity.Common => 1, Rarity.Uncommon => 2, Rarity.Rare => 3, Rarity.Epic => 4, _ => 1 };
+        int speedGain = enemy.Rarity switch { Rarity.Common => 1, Rarity.Uncommon => 2, Rarity.Rare => 2, Rarity.Epic => 3, _ => 1 };
+
         enemy.MaxHp += hpGain;
         enemy.Atk += atkGain;
+        enemy.Speed += speedGain;
     }
 
     enemy.CurrentHp = enemy.MaxHp;
+    enemy.CurrentStamina = enemy.MaxStamina;
     return enemy;
 }
 

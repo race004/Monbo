@@ -10,5 +10,9 @@ public enum MonsterType
     Electric,
     Rock,
     Flying,
-    Psychic
+    Psychic,
+    Ice,
+    Steel,
+    Dark,
+    Light
 }

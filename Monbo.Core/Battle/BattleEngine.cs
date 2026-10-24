@@ -29,8 +29,8 @@ public static class BattleEngine
     // ==========================================
     public static bool Battle1v1(Monster playerMonster, Monster enemyMonster, PlayerInventory inventory)
     {
-        playerMonster.CurrentHp = playerMonster.MaxHp;
-        enemyMonster.CurrentHp = enemyMonster.MaxHp;
+        playerMonster.ResetForBattle();
+        enemyMonster.ResetForBattle();
 
         while (playerMonster.IsAlive && enemyMonster.IsAlive)
         {
@@ -41,25 +41,51 @@ public static class BattleEngine
             DrawMonsterStatus(enemyMonster, "PROTIVNIK", false);
             Console.WriteLine("\n==================================================");
 
-            var playerMove = GetPlayerMove(playerMonster);
+            // 1. Provera statusa na početku poteza
+            ProcessStatusEffects(playerMonster);
+            ProcessStatusEffects(enemyMonster);
+            if (!playerMonster.IsAlive || !enemyMonster.IsAlive) break;
 
-            if (playerMove == null)
+            // 2. Određivanje redosleda na osnovu Speed
+            bool playerFirst = playerMonster.Speed >= enemyMonster.Speed;
+
+            if (playerFirst)
             {
+                // TI IDEŠ PRVI
+                if (!ExecuteTurn(playerMonster, enemyMonster, true, inventory)) return false;
+                if (!enemyMonster.IsAlive) break;
+
+                // Protivnik ide posle tebe
+                Console.WriteLine("\nPritisni Enter da vidiš protivnikov potez...");
+                Console.ReadLine();
                 Console.Clear();
-                TypeWrite("Pobegli ste iz borbe!");
-                return false; // Vraćamo false jer nije pobeda
+                DrawHeader("PROTIVNIKOV POTEZ");
+
+                if (!ExecuteTurn(enemyMonster, playerMonster, false, inventory)) return false;
+            }
+            else
+            {
+                // PROTIVNIK IDE PRVI
+                Console.Clear();
+                DrawHeader("PROTIVNIKOV POTEZ");
+                if (!ExecuteTurn(enemyMonster, playerMonster, false, inventory)) return false;
+                if (!playerMonster.IsAlive) break;
+
+                // Sada je tvoj red - čekamo da pritisneš Enter da bi video svoj status
+                Console.WriteLine("\nPritisni Enter za tvoj potez...");
+                Console.ReadLine();
+
+                // Prikazujemo tvoj status pre nego što izabereš napad
+                Console.Clear();
+                DrawHeader("TVOJ POTEZ");
+                DrawMonsterStatus(playerMonster, "TVOJ TIM", true);
+                Console.WriteLine("\n--------------------------------------------------\n");
+                DrawMonsterStatus(enemyMonster, "PROTIVNIK", false);
+                Console.WriteLine("\n==================================================");
+
+                if (!ExecuteTurn(playerMonster, enemyMonster, true, inventory)) return false;
             }
 
-            Console.Clear();
-            ExecuteAttack(playerMonster, new List<Monster> { playerMonster }, new List<Monster> { enemyMonster }, playerMove, true); 
-            WaitAndClear();
-
-            if (!enemyMonster.IsAlive) break;
-
-            Console.Clear();
-            DrawHeader("BORBA 1 vs 1");
-            var enemyMove = enemyMonster.ActiveMoves[_random.Next(enemyMonster.ActiveMoves.Count)];
-            ExecuteAttack(enemyMonster, new List<Monster> { enemyMonster }, new List<Monster> { playerMonster }, enemyMove, false);
             WaitAndClear();
         }
 
@@ -67,11 +93,9 @@ public static class BattleEngine
         if (playerMonster.IsAlive)
         {
             TypeWrite($"\n🏆 {playerMonster.Name} je pobedio!");
-
             int xpReward = enemyMonster.Level * 20;
             playerMonster.AddXP(xpReward);
             TypeWrite($"{playerMonster.Name} je dobio {xpReward} XP!");
-            if (playerMonster.Level > 1) TypeWrite($"✨ {playerMonster.Name} je dostigao nivo {playerMonster.Level}!");
 
             TypeWrite($"\n✨ UHVAĆENO: {enemyMonster.Name} se pridružuje tvom inventaru!");
             inventory.AddMonster(enemyMonster, isCaught: true);
@@ -82,98 +106,66 @@ public static class BattleEngine
             TypeWrite($"\n💀 {playerMonster.Name} je izgubio...");
             return false;
         }
-    }
-
+    }    // ==========================================
+    // BORBA TIM PROTIV TIMA (3v3) i TIM PROTIV 1
     // ==========================================
-    // BORBA TIM PROTIV TIMA (3v3)
-    // ==========================================
-    public static bool BattleTeamVsTeam(Team playerTeam, Team enemyTeam)
+    public static bool BattleTeam(Team playerTeam, Team enemyTeam, PlayerInventory inventory, bool canCatch)
     {
-        foreach (var m in playerTeam.Members) m.CurrentHp = m.MaxHp;
-        foreach (var m in enemyTeam.Members) m.CurrentHp = m.MaxHp;
-
-        var turnOrder = new List<(Monster monster, bool isPlayer)>();
-        foreach (var m in playerTeam.Members) turnOrder.Add((m, true));
-        foreach (var m in enemyTeam.Members) turnOrder.Add((m, false));
-        turnOrder = turnOrder.OrderBy(x => _random.Next()).ToList();
-
-        int turnIndex = 0;
+        foreach (var m in playerTeam.Members) m.ResetForBattle();
+        foreach (var m in enemyTeam.Members) m.ResetForBattle();
 
         while (playerTeam.HasAlive && enemyTeam.HasAlive)
         {
-            var current = turnOrder[turnIndex];
+            // Proveravamo statuse za sve žive na početku kruga
+            foreach (var m in playerTeam.Members.Where(x => x.IsAlive)) ProcessStatusEffects(m);
+            foreach (var m in enemyTeam.Members.Where(x => x.IsAlive)) ProcessStatusEffects(m);
+            if (!playerTeam.HasAlive || !enemyTeam.HasAlive) break;
 
-            if (!current.monster.IsAlive)
+            // Pravimo listu svih živih i sortiramo po brzini
+            var allCombatants = new List<(Monster monster, bool isPlayer)>();
+            foreach (var m in playerTeam.Members.Where(x => x.IsAlive)) allCombatants.Add((m, true));
+            foreach (var m in enemyTeam.Members.Where(x => x.IsAlive)) allCombatants.Add((m, false));
+
+            var sortedBySpeed = allCombatants.OrderByDescending(x => x.monster.Speed).ToList();
+
+            // Svi napadaju po redosledu
+            foreach (var (attacker, isPlayer) in sortedBySpeed)
             {
-                turnIndex = (turnIndex + 1) % turnOrder.Count;
-                continue;
-            }
+                if (!attacker.IsAlive) continue;
 
-            Console.Clear();
-            DrawHeader($"BORBA TIM PROTIV TIMA");
-            DrawTurnOrder(turnOrder, turnIndex);
+                var targetTeam = isPlayer ? enemyTeam : playerTeam;
+                var target = targetTeam.Members.FirstOrDefault(m => m.IsAlive);
 
-            Console.WriteLine("\n=== TVOJ TIM ===");
-            foreach (var m in playerTeam.Members) DrawMonsterStatus(m, "", true);
+                if (target == null) break;
 
-            Console.WriteLine("\n=== PROTIVNICKI TIM ===");
-            foreach (var m in enemyTeam.Members) DrawMonsterStatus(m, "", false);
-
-            Console.WriteLine("\n==================================================");
-
-            var attacker = current.monster;
-            var ownTeam = current.isPlayer ? playerTeam.Members : enemyTeam.Members;
-            var enemyTeamList = current.isPlayer ? enemyTeam.Members : playerTeam.Members;
-
-            if (current.isPlayer)
-            {
-                Console.WriteLine($"\nNa potezu je: {attacker.Name}");
-                var move = GetPlayerMove(attacker);
-
-                if (move == null)
+                // Ako je igrač na potezu, prikaži mu status pre nego što odluči
+                if (isPlayer)
                 {
                     Console.Clear();
-                    TypeWrite("Pobegli ste iz borbe!");
-                    return false;
-                }
+                    DrawHeader($"NA POTEZU: {attacker.Name}");
+                    Console.WriteLine("=== TVOJ TIM ===");
+                    foreach (var m in playerTeam.Members) DrawMonsterStatus(m, "", true);
+                    Console.WriteLine("\n=== PROTIVNICKI TIM ===");
+                    foreach (var m in enemyTeam.Members) DrawMonsterStatus(m, "", false);
+                    Console.WriteLine("\n==================================================");
 
-                // Ako je heal, pitamo koga leči (ako je Ally ili SelfAndAlly)
-                if (move.IsHeal && (move.HealTarget == HealTarget.Ally || move.HealTarget == HealTarget.SelfAndAlly))
+                    if (!ExecuteTurn(attacker, target, isPlayer, inventory)) return false;
+
+                    Console.WriteLine("\nPritisni Enter za nastavak...");
+                    Console.ReadLine();
+                }
+                else
                 {
-                    // Ako je SelfAndAlly, lečiće ceo tim, ne treba meta
-                }
-                else if (!move.IsHeal)
-                {
-                    // Ako je šteta, igrač bira metu
-                    var target = ChooseTarget(enemyTeamList, "Izaberi metu za napad:");
-                    enemyTeamList = new List<Monster> { target }; // Sužavamo listu na samo tu metu
-                }
+                    Console.Clear();
+                    DrawHeader($"NA POTEZU JE PROTIVNIK: {attacker.Name}");
+                    if (!ExecuteTurn(attacker, target, isPlayer, inventory)) return false;
 
-                Console.Clear();
-                DrawHeader("TOK BORBE");
-                ExecuteAttack(attacker, ownTeam, enemyTeamList, move, true);
-            }
-            else
-            {
-                TypeWrite($"\nNa potezu je PROTIVNIK: {attacker.Name}...");
-                var move = attacker.ActiveMoves[_random.Next(attacker.ActiveMoves.Count)];
-
-                // AI bira metu za štetu
-                if (!move.IsHeal)
-                {
-                    var aliveEnemies = enemyTeamList.Where(m => m.IsAlive).ToList();
-                    if (aliveEnemies.Count > 0)
-                    {
-                        var target = aliveEnemies[_random.Next(aliveEnemies.Count)];
-                        enemyTeamList = new List<Monster> { target };
-                    }
+                    Console.WriteLine("\nPritisni Enter za nastavak...");
+                    Console.ReadLine();
                 }
-
-                ExecuteAttack(attacker, ownTeam, enemyTeamList, move, false);
             }
 
             WaitAndClear();
-            turnIndex = (turnIndex + 1) % turnOrder.Count;
         }
 
         Console.Clear();
@@ -181,29 +173,24 @@ public static class BattleEngine
         if (playerWon)
         {
             TypeWrite($"\n🏆 {playerTeam.Name} pobeđuje!");
-
-            // 1. Računamo UKUPAN XP (Zbir svih levela protivnika * 20)
             int totalEnemyLevels = enemyTeam.Members.Sum(m => m.Level);
             int totalXpPool = totalEnemyLevels * 20;
-
-            // 2. Delimo XP sa ukupnim brojem članova tvog tima
             int xpPerMonster = totalXpPool / playerTeam.Members.Count;
 
-            // Ispisujemo samo ukupno osvojeni XP (bez objašnjenja podele)
             TypeWrite($"\nUkupno osvojeno XP: {totalXpPool}");
-
-            // 3. Dodeljujemo XP samo PREŽIVELIMA
             var survivors = playerTeam.Members.Where(m => m.IsAlive).ToList();
             foreach (var survivor in survivors)
             {
                 int oldLevel = survivor.Level;
                 survivor.AddXP(xpPerMonster);
                 TypeWrite($"{survivor.Name} dobija {xpPerMonster} XP!");
+                if (survivor.Level > oldLevel) TypeWrite($"✨ {survivor.Name} je dostigao nivo {survivor.Level}!");
+            }
 
-                if (survivor.Level > oldLevel)
-                {
-                    TypeWrite($"✨ {survivor.Name} je dostigao nivo {survivor.Level}!");
-                }
+            if (canCatch && enemyTeam.Members.Count == 1)
+            {
+                TypeWrite($"\n✨ UHVAĆENO: {enemyTeam.Members[0].Name} se pridružuje tvom inventaru!");
+                inventory.AddMonster(enemyTeam.Members[0], isCaught: true);
             }
         }
         else
@@ -212,136 +199,226 @@ public static class BattleEngine
         }
         return playerWon;
     }
+    // ==========================================
+    // POMOĆNE METODE ZA POTEZE
+    // ==========================================
 
-    // ==========================================
-    // BORBA TIM PROTIV 1
-    // ==========================================
-    public static bool BattleTeamVs1(Team playerTeam, Monster enemyMonster, PlayerInventory inventory)
+    private static bool ExecuteTurn(Monster attacker, Monster target, bool isPlayer, PlayerInventory inventory)
     {
-        foreach (var m in playerTeam.Members) m.CurrentHp = m.MaxHp;
-        enemyMonster.CurrentHp = enemyMonster.MaxHp;
-
-        var turnOrder = new List<(Monster monster, bool isPlayer)>();
-        foreach (var m in playerTeam.Members) turnOrder.Add((m, true));
-        turnOrder.Add((enemyMonster, false));
-        turnOrder = turnOrder.OrderBy(x => _random.Next()).ToList();
-
-        int turnIndex = 0;
-
-        while (playerTeam.HasAlive && enemyMonster.IsAlive)
+        // Provera da li je čudovište pod Stun/Freeze efektom
+        var stunEffect = attacker.ActiveStatuses.FirstOrDefault(s => s.SkipTurn);
+        if (stunEffect != null)
         {
-            var current = turnOrder[turnIndex];
-
-            if (!current.monster.IsAlive)
-            {
-                turnIndex = (turnIndex + 1) % turnOrder.Count;
-                continue;
-            }
-
-            Console.Clear();
-            DrawHeader($"BORBA TIM PROTIV 1");
-            DrawTurnOrder(turnOrder, turnIndex);
-
-            Console.WriteLine("\n=== TVOJ TIM ===");
-            foreach (var m in playerTeam.Members) DrawMonsterStatus(m, "", true);
-
-            Console.WriteLine("\n=== PROTIVNIK ===");
-            DrawMonsterStatus(enemyMonster, "", false);
-
-            Console.WriteLine("\n==================================================");
-
-            var attacker = current.monster;
-            var ownTeam = current.isPlayer ? playerTeam.Members : new List<Monster> { enemyMonster };
-            var enemyTeamList = current.isPlayer ? new List<Monster> { enemyMonster } : playerTeam.Members;
-
-            if (current.isPlayer)
-            {
-                Console.WriteLine($"\nNa potezu je: {attacker.Name}");
-                var move = GetPlayerMove(attacker);
-
-                if (move == null)
-                {
-                    Console.Clear();
-                    TypeWrite("Pobegli ste iz borbe!");
-                    return false;
-                }
-
-                if (!move.IsHeal)
-                {
-                    // U 3v1, protivnik je samo jedan, pa nema potrebe birati metu (uvek je on)
-                    // ali možemo ostaviti da se odmah napadne.
-                }
-
-                Console.Clear();
-                DrawHeader("TOK BORBE");
-                ExecuteAttack(attacker, ownTeam, enemyTeamList, move, true);
-            }
-            else
-            {
-                TypeWrite($"\nNa potezu je PROTIVNIK: {attacker.Name}...");
-                var move = attacker.ActiveMoves[_random.Next(attacker.ActiveMoves.Count)];
-
-                if (!move.IsHeal)
-                {
-                    var aliveEnemies = enemyTeamList.Where(m => m.IsAlive).ToList();
-                    if (aliveEnemies.Count > 0)
-                    {
-                        var target = aliveEnemies[_random.Next(aliveEnemies.Count)];
-                        enemyTeamList = new List<Monster> { target };
-                    }
-                }
-
-                ExecuteAttack(attacker, ownTeam, enemyTeamList, move, false);
-            }
-
-            WaitAndClear();
-            turnIndex = (turnIndex + 1) % turnOrder.Count;
+            TypeWrite($"  {attacker.Name} ne može da napadne! ({stunEffect.Name})");
+            stunEffect.Duration--;
+            if (stunEffect.Duration <= 0) attacker.ActiveStatuses.Remove(stunEffect);
+            return true;
         }
 
-        Console.Clear();
-        bool playerWon = playerTeam.HasAlive;
-        if (playerWon)
+        Attack? chosenMove = null;
+        if (isPlayer)
         {
-            TypeWrite($"\n🏆 {playerTeam.Name} pobeđuje!");
-
-            // 1. Računamo UKUPAN XP (Level protivnika * 20)
-            int totalXpPool = enemyMonster.Level * 20;
-
-            // 2. Delimo XP sa ukupnim brojem članova tvog tima
-            int xpPerMonster = totalXpPool / playerTeam.Members.Count;
-
-            // Ispisujemo samo ukupno osvojeni XP
-            TypeWrite($"\nUkupno osvojeno XP: {totalXpPool}");
-
-            // 3. Dodeljujemo XP samo PREŽIVELIMA
-            var survivors = playerTeam.Members.Where(m => m.IsAlive).ToList();
-            foreach (var survivor in survivors)
-            {
-                int oldLevel = survivor.Level;
-                survivor.AddXP(xpPerMonster);
-                TypeWrite($"{survivor.Name} dobija {xpPerMonster} XP!");
-
-                if (survivor.Level > oldLevel)
-                {
-                    TypeWrite($"✨ {survivor.Name} je dostigao nivo {survivor.Level}!");
-                }
-            }
-
-            // 4. Hvatanje protivnika
-            TypeWrite($"\n✨ UHVAĆENO: {enemyMonster.Name} se pridružuje tvom inventaru!");
-            inventory.AddMonster(enemyMonster, isCaught: true);
-
-            return true;
+            chosenMove = GetPlayerMove(attacker);
+            if (chosenMove == null) return false; // Pobegao
         }
         else
         {
-            TypeWrite($"\n💀 {enemyMonster.Name} pobeđuje...");
+            // AI bira nasumičan napad za koji ima stamine
+            var validMoves = attacker.ActiveMoves.Where(m => attacker.CurrentStamina >= m.StaminaCost).ToList();
+            if (validMoves.Count > 0) chosenMove = validMoves[_random.Next(validMoves.Count)];
+            else chosenMove = new Attack("Charge", MonsterType.Normal, 0, 100, 1, 0); // AI puni energiju
         }
-        return playerWon;
+
+        Console.Clear();
+        DrawHeader("TOK BORBE");
+
+        if (chosenMove.Name == "Charge")
+        {
+            int staminaRestored = (int)(attacker.MaxStamina * 0.5);
+            attacker.CurrentStamina = Math.Min(attacker.MaxStamina, attacker.CurrentStamina + staminaRestored);
+            TypeWrite($"  {attacker.Name} puni energiju i vraća {staminaRestored} stamine!");
+        }
+        else
+        {
+            ExecuteAttack(attacker, new List<Monster> { target }, chosenMove, isPlayer);
+        }
+
+        return true;
+    }
+
+    private static Attack? GetPlayerMove(Monster playerMonster)
+    {
+        Console.WriteLine($"\nIzaberi napad za {playerMonster.Name} (Stamina: {playerMonster.CurrentStamina}/{playerMonster.MaxStamina}):");
+        for (int i = 0; i < playerMonster.ActiveMoves.Count; i++)
+        {
+            var move = playerMonster.ActiveMoves[i];
+            string type = move.IsHeal ? "Heal" : move.Type.ToString();
+            string power = move.IsHeal ? $"Heal: {move.HealPercent}%" : $"Snaga: {move.PowerPercent}%";
+            string area = move.IsArea ? " [AREA]" : "";
+
+            string costColor = playerMonster.CurrentStamina < move.StaminaCost ? "[NEMA STAMINE]" : $"{move.StaminaCost} Stam";
+            Console.WriteLine($"{i + 1}. {move.Name} ({type}){area} - {power} | Preciznost: {move.Accuracy}% | {costColor}");
+        }
+        Console.WriteLine($"{playerMonster.ActiveMoves.Count + 1}. PUNI ENERGIJU (+50% stamine)");
+        Console.WriteLine("0. Pobegni iz borbe");
+
+        int choice;
+        while (true)
+        {
+            Console.Write("> ");
+            if (int.TryParse(Console.ReadLine(), out choice))
+            {
+                if (choice == 0) return null;
+                if (choice == playerMonster.ActiveMoves.Count + 1) return new Attack("Charge", MonsterType.Normal, 0, 100, 1, 0);
+                if (choice >= 1 && choice <= playerMonster.ActiveMoves.Count)
+                {
+                    var selectedMove = playerMonster.ActiveMoves[choice - 1];
+                    if (playerMonster.CurrentStamina >= selectedMove.StaminaCost) return selectedMove;
+                    else Console.WriteLine("Nemaš dovoljno stamine za taj napad!");
+                }
+            }
+            Console.WriteLine("Neispravan unos.");
+        }
+    }
+
+    private static void ExecuteAttack(Monster attacker, List<Monster> targets, Attack move, bool isPlayerAttacking)
+    {
+        string attackerName = isPlayerAttacking ? attacker.Name : $"Protivnik ({attacker.Name})";
+
+        // 1. Trošenje stamine
+        attacker.UseStamina(move.StaminaCost);
+
+        // 2. Provera preciznosti (sa modifikatorom od Blind/Daze)
+        double accuracyMod = 1.0;
+        var blind = attacker.ActiveStatuses.FirstOrDefault(s => s.AccuracyModifier < 0);
+        if (blind != null) accuracyMod += blind.AccuracyModifier; // npr. 1.0 - 0.5 = 0.5
+        if (_random.Next(1, 101) > move.Accuracy * accuracyMod)
+        {
+            TypeWrite($"  {attackerName} koristi {move.Name}... ali PROMAŠUJE!");
+            return;
+        }
+
+        // 3. Heal napadi
+        if (move.IsHeal)
+        {
+            int healAmount = (int)(attacker.MaxHp * (move.HealPercent / 100.0));
+            attacker.CurrentHp = Math.Min(attacker.MaxHp, attacker.CurrentHp + healAmount);
+            TypeWrite($"  {attackerName} koristi {move.Name} i leči sebe za {healAmount} HP!");
+            return;
+        }
+
+        // 4. Štetni napadi
+        var actualTargets = new List<Monster>();
+        if (move.IsArea)
+        {
+            actualTargets = targets.Where(t => t.IsAlive).ToList();
+        }
+        else
+        {
+            var singleTarget = targets.FirstOrDefault(t => t.IsAlive);
+            if (singleTarget != null) actualTargets.Add(singleTarget);
+        }
+
+        foreach (var defender in actualTargets)
+        {
+            if (defender == null) continue;
+
+            // Provera ranjivosti (Soak -> +50% Electric damage)
+            double typeMultiplier = TypeChart.GetMultiplier(move.Type, defender.Types);
+            if (move.Type == MonsterType.Electric && defender.ActiveStatuses.Any(s => s.Name == "Soak"))
+                typeMultiplier *= 1.5;
+
+            string effectiveness = typeMultiplier > 1.0 ? " (Veoma efikasno!)" : typeMultiplier < 1.0 ? " (Nije baš efikasno...)" : "";
+
+            double baseDamage = attacker.Atk * (move.PowerPercent / 100.0);
+            int finalDamage = (int)Math.Max(1, Math.Round(baseDamage * typeMultiplier));
+
+            defender.CurrentHp = Math.Max(0, defender.CurrentHp - finalDamage);
+            TypeWrite($"  {attackerName} koristi {move.Name} na {defender.Name} i nanosi {finalDamage} štete!{effectiveness}");
+
+            // 5. Primena statusa (ako napad ima efekat i ako je meta živa)
+            if (defender.IsAlive && move.EffectToApply != null && _random.Next(1, 101) <= move.EffectChance)
+            {
+                ApplyStatus(defender, move.EffectToApply);
+            }
+
+            if (!defender.IsAlive) TypeWrite($"  💀 {defender.Name} je onesvešćen!");
+        }
     }
 
     // ==========================================
-    // UI I POMOĆNE METODE
+    // STATUS EFEKTI
+    // ==========================================
+
+    private static void ApplyStatus(Monster target, StatusEffect effect)
+    {
+        var existing = target.ActiveStatuses.FirstOrDefault(s => s.Name == effect.Name);
+        if (existing != null)
+        {
+            if (effect.IsStackable)
+            {
+                // Ako je stekabilno (npr. Bane), samo dodajemo novi efekat
+                target.ActiveStatuses.Add(new StatusEffect(effect.Name, effect.Element, effect.Duration) { DamagePercentPerTurn = effect.DamagePercentPerTurn });
+            }
+            else
+            {
+                // Ako nije, osvežavamo trajanje
+                existing.Duration = effect.Duration;
+            }
+        }
+        else
+        {
+            target.ActiveStatuses.Add(new StatusEffect(effect.Name, effect.Element, effect.Duration)
+            {
+                DamagePercentPerTurn = effect.DamagePercentPerTurn,
+                AtkModifier = effect.AtkModifier,
+                SpeedModifier = effect.SpeedModifier,
+                AccuracyModifier = effect.AccuracyModifier,
+                SkipTurn = effect.SkipTurn,
+                IsConfusion = effect.IsConfusion,
+                IsStackable = effect.IsStackable
+            });
+            TypeWrite($"  ✨ {target.Name} je dobio status: {effect.Name}!");
+        }
+    }
+
+    private static void ProcessStatusEffects(Monster monster)
+    {
+        for (int i = monster.ActiveStatuses.Count - 1; i >= 0; i--)
+        {
+            var status = monster.ActiveStatuses[i];
+
+            // Šteta po potezu
+            if (status.DamagePercentPerTurn > 0)
+            {
+                int damage = (int)(monster.MaxHp * (status.DamagePercentPerTurn / 100.0));
+                monster.CurrentHp = Math.Max(0, monster.CurrentHp - damage);
+                TypeWrite($"  {monster.Name} trpi {damage} štete od {status.Name}!");
+                if (!monster.IsAlive)
+                {
+                    TypeWrite($"  💀 {monster.Name} je podlegao efektu {status.Name}!");
+                    return;
+                }
+            }
+
+            // Smanjenje stamine (Energy Leak)
+            if (status.Element == MonsterType.Electric && status.Name == "Energy Leak")
+            {
+                int staminaLoss = (int)(monster.MaxStamina * 0.15);
+                monster.CurrentStamina = Math.Max(0, monster.CurrentStamina - staminaLoss);
+                TypeWrite($"  {monster.Name} gubi {staminaLoss} stamine od {status.Name}!");
+            }
+
+            status.Duration--;
+            if (status.Duration <= 0)
+            {
+                monster.ActiveStatuses.RemoveAt(i);
+            }
+        }
+    }
+
+    // ==========================================
+    // UI
     // ==========================================
 
     private static void DrawHeader(string title)
@@ -351,186 +428,24 @@ public static class BattleEngine
         Console.WriteLine("==================================================");
     }
 
-    private static void DrawTurnOrder(List<(Monster monster, bool isPlayer)> order, int currentIndex)
-    {
-        Console.Write("REDOSLED: ");
-        for (int i = 0; i < order.Count; i++)
-        {
-            if (!order[i].monster.IsAlive) continue;
-
-            string name = order[i].isPlayer ? $"[{order[i].monster.Name}]" : order[i].monster.Name;
-            if (i == currentIndex)
-                Console.Write($"👉 {name} 👈  ->  ");
-            else
-                Console.Write($"{name}  ->  ");
-        }
-        Console.WriteLine();
-    }
-
     private static void DrawMonsterStatus(Monster m, string prefix, bool isPlayer)
     {
-        if (!m.IsAlive)
-        {
-            Console.WriteLine($"{prefix} {m.Name} [MRTAV]");
-            return;
-        }
+        if (!m.IsAlive) { Console.WriteLine($"{prefix} {m.Name} [MRTAV]"); return; }
 
         string prefixText = string.IsNullOrEmpty(prefix) ? "" : $"{prefix} ";
-
         string typesStr = string.Join("/", m.Types);
-
-        // DODAT XP U ISPIS
         int xpNeeded = m.Level * 30;
+
         Console.WriteLine($"{prefixText}{m.Name} ({typesStr}) (Lvl {m.Level}) | XP: {m.XP}/{xpNeeded}");
-        Console.WriteLine($"  HP: {m.CurrentHp}/{m.MaxHp} | ATK: {m.Atk}");
+        Console.WriteLine($"  HP: {m.CurrentHp}/{m.MaxHp} | ATK: {m.Atk} | SPD: {m.Speed} | Stam: {m.CurrentStamina}/{m.MaxStamina}");
 
-        Console.Write("  Napadi: ");
-        foreach (var move in m.ActiveMoves)
+        if (m.ActiveStatuses.Count > 0)
         {
-            string typeStr = move.IsHeal ? "Heal" : move.Type.ToString().Substring(0, 3);
-            string targetStr = "";
-            if (move.IsHeal)
-            {
-                targetStr = move.HealTarget switch
-                {
-                    HealTarget.Self => " [Self]",
-                    HealTarget.Ally => " [Ally]",
-                    HealTarget.SelfAndAlly => " [Team]",
-                    _ => ""
-                };
-            }
-            Console.Write($"[{move.Name} ({typeStr}){targetStr}] ");
+            Console.Write("  Statusi: ");
+            foreach (var s in m.ActiveStatuses)
+                Console.Write($"[{s.Name} ({s.Duration})] ");
+            Console.WriteLine();
         }
-        Console.WriteLine();
-    }
-
-    private static Attack? GetPlayerMove(Monster playerMonster)
-    {
-        Console.WriteLine($"\nIzaberi napad za {playerMonster.Name} (unesi 0 za bekstvo):");
-        for (int i = 0; i < playerMonster.ActiveMoves.Count; i++)
-        {
-            var move = playerMonster.ActiveMoves[i];
-            string type = move.IsHeal ? "Heal" : move.Type.ToString();
-            string power = move.IsHeal ? $"Heal: {move.HealPercent}%" : $"Snaga: {move.PowerPercent}%";
-
-            string targetStr = "";
-            if (move.IsHeal)
-            {
-                targetStr = move.HealTarget switch
-                {
-                    HealTarget.Self => " [Self]",
-                    HealTarget.Ally => " [Ally]",
-                    HealTarget.SelfAndAlly => " [Team]",
-                    _ => ""
-                };
-            }
-
-            Console.WriteLine($"{i + 1}. {move.Name} ({type}){targetStr} - {power} | Preciznost: {move.Accuracy}%");
-        }
-
-        int choice;
-        while (true)
-        {
-            Console.Write("> ");
-            if (int.TryParse(Console.ReadLine(), out choice))
-            {
-                if (choice == 0) return null; // Vraćamo null ako igrač želi da pobegne
-                if (choice >= 1 && choice <= playerMonster.ActiveMoves.Count)
-                    return playerMonster.ActiveMoves[choice - 1];
-            }
-            Console.WriteLine("Neispravan unos.");
-        }
-    }
-
-    private static Monster ChooseTarget(List<Monster> enemies, string prompt)
-    {
-        var aliveEnemies = enemies.Where(m => m.IsAlive).ToList();
-        if (aliveEnemies.Count == 1) return aliveEnemies[0]; // Ako je samo jedan, uzmi ga
-
-        Console.WriteLine($"\n{prompt}");
-        for (int i = 0; i < aliveEnemies.Count; i++)
-        {
-            var e = aliveEnemies[i];
-            string typesStr = string.Join("/", e.Types);
-            Console.WriteLine($"{i + 1}. {e.Name} ({typesStr}) - HP: {e.CurrentHp}/{e.MaxHp}");
-        }
-
-        int choice;
-        while (true)
-        {
-            Console.Write("> ");
-            if (int.TryParse(Console.ReadLine(), out choice) && choice >= 1 && choice <= aliveEnemies.Count)
-                return aliveEnemies[choice - 1];
-            Console.WriteLine("Neispravan unos.");
-        }
-    }
-
-    private static void ExecuteAttack(Monster attacker, List<Monster> ownTeam, List<Monster> enemyTeam, Attack move, bool isPlayerAttacking)
-    {
-        string attackerName = isPlayerAttacking ? attacker.Name : $"Protivnik ({attacker.Name})";
-
-        if (_random.Next(1, 101) > move.Accuracy)
-        {
-            TypeWrite($"  {attackerName} koristi {move.Name}... ali PROMAŠUJE!");
-            return;
-        }
-
-        if (move.IsHeal)
-        {
-            int healAmount = (int)(attacker.MaxHp * (move.HealPercent / 100.0));
-
-            if (move.HealTarget == HealTarget.Self)
-            {
-                int oldHp = attacker.CurrentHp;
-                attacker.CurrentHp = Math.Min(attacker.MaxHp, attacker.CurrentHp + healAmount);
-                TypeWrite($"  {attackerName} koristi {move.Name} i leči sebe za {attacker.CurrentHp - oldHp} HP!");
-            }
-            else if (move.HealTarget == HealTarget.Ally)
-            {
-                // Nalazimo živog saveznika (ne sebe)
-                var ally = ownTeam.FirstOrDefault(m => m != attacker && m.IsAlive);
-                if (ally != null)
-                {
-                    int oldHp = ally.CurrentHp;
-                    ally.CurrentHp = Math.Min(ally.MaxHp, ally.CurrentHp + healAmount);
-                    TypeWrite($"  {attackerName} koristi {move.Name} i leči saveznika {ally.Name} za {ally.CurrentHp - oldHp} HP!");
-                }
-                else
-                {
-                    TypeWrite($"  {attackerName} koristi {move.Name}, ali nema živog saveznika da izleči!");
-                }
-            }
-            else if (move.HealTarget == HealTarget.SelfAndAlly)
-            {
-                // Leči ceo tim (uključujući sebe)
-                int totalHealed = 0;
-                foreach (var member in ownTeam.Where(m => m.IsAlive))
-                {
-                    int oldHp = member.CurrentHp;
-                    member.CurrentHp = Math.Min(member.MaxHp, member.CurrentHp + healAmount);
-                    totalHealed += (member.CurrentHp - oldHp);
-                }
-                TypeWrite($"  {attackerName} koristi {move.Name} i leči ceo tim (ukupno {totalHealed} HP)!");
-            }
-            return;
-        }
-
-        var defender = enemyTeam.FirstOrDefault(m => m.IsAlive);
-        if (defender == null) return;
-
-        double typeMultiplier = TypeChart.GetMultiplier(move.Type, defender.Types);
-        string effectiveness = typeMultiplier > 1.0 ? " (Veoma efikasno!)" :
-                               typeMultiplier < 1.0 ? " (Nije baš efikasno...)" : "";
-
-        double baseDamage = attacker.Atk * (move.PowerPercent / 100.0);
-        int finalDamage = (int)Math.Max(1, Math.Round(baseDamage * typeMultiplier));
-
-        defender.CurrentHp = Math.Max(0, defender.CurrentHp - finalDamage);
-        TypeWrite($"  {attackerName} koristi {move.Name} na {defender.Name} i nanosi {finalDamage} štete!{effectiveness}");
-
-        if (!defender.IsAlive)
-        {
-            TypeWrite($"  💀 {defender.Name} je onesvešćen!");
-        }
+        else Console.WriteLine();
     }
 }
